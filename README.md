@@ -6,7 +6,7 @@ An automated, event-driven data engineering pipeline that extracts data from the
 
 ## 📐 Architecture
 
-![Architecture](diagram/spotify_etl_pipeline_diagram_v2.svg)
+![Architecture](diagram/spotify_etl_pipeline_diagram_v3.svg)
 
 
 ---
