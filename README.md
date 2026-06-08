@@ -6,64 +6,8 @@ An automated, event-driven data engineering pipeline that extracts data from the
 
 ## 📐 Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                          AWS Cloud                              │
-│                                                                 │
-│   CloudWatch Events                                             │
-│   (daily trigger)                                               │
-│        │                                                        │
-│        ▼                                                        │
-│   ┌─────────────┐     raw JSON      ┌──────────────────────┐   │
-│   │   Lambda    │ ───────────────►  │   S3 Bucket          │   │
-│   │ (Extraction)│                   │  raw_data/           │   │
-│   └─────────────┘                   │    to_process/  ───┐ │   │
-│        ▲                            │    processed/   ◄─┐│ │   │
-│        │                            └─────────────────│─┘│ │   │
-│   Spotify API                            S3 trigger   │  │ │   │
-│   (spotipy)                                    │      │  │ │   │
-│                                                ▼      │  │ │   │
-│                                        ┌─────────────┐│  │ │   │
-│                                        │   Lambda    ││  │ │   │
-│                                        │(Transform.) ││  │ │   │
-│                                        └──────┬──────┘│  │ │   │
-│                                               │move   │  │ │   │
-│                             CSVs             │file   │  │ │   │
-│                               │              └───────┘  │ │   │
-│                               ▼                         │ │   │
-│                    ┌─────────────────────┐              │ │   │
-│                    │   S3 Bucket         │              │ │   │
-│                    │  transformed_data/  │              │ │   │
-│                    │    song_data/       │              │ │   │
-│                    │    artist_data/     │              │ │   │
-│                    │    album_data/      │              │ │   │
-│                    └──────────┬──────────┘              │ │   │
-│                               │ S3 event notification   │ │   │
-└───────────────────────────────┼─────────────────────────┘─┘   │
-                                │                                 
-                                ▼ SQS Queue (Snowflake-managed)  
-                    ┌───────────────────────┐
-                    │       Snowpipe        │
-                    │    (AUTO_INGEST)      │
-                    └───────────┬───────────┘
-                                │
-                                ▼
-                    ┌───────────────────────┐
-                    │       Snowflake       │
-                    │   spotify_db.raw      │
-                    │  ┌─────────────────┐  │
-                    │  │  song           │  │
-                    │  │  artist         │  │
-                    │  │  album          │  │
-                    │  └─────────────────┘  │
-                    │   spotify_db.analytics│
-                    │  ┌─────────────────┐  │
-                    │  │  top_songs      │  │
-                    │  │  artist_count   │  │
-                    │  │  album_timeline │  │
-                    │  └─────────────────┘  │
-                    └───────────────────────┘
-```
+![Architecture](diagram/spotify_etl_pipeline_diagram_v2.svg)
+
 
 ---
 
@@ -230,25 +174,36 @@ Create an EventBridge rule on a daily `cron` schedule targeting the extraction L
 
 ---
 
-## 📊 Sample Analytics Queries
+## 📊 Analytics Layer
 
+Three views built on top of the raw tables in `spotify_db.analytics`:
+
+**Top songs by popularity**
 ```sql
--- Top 10 most popular songs
 SELECT * FROM spotify_db.analytics.top_songs;
+```
+| song_name | artist_name | song_popularity | duration_minutes |
+|-----------|------------|-----------------|-----------------|
+| NO BATIDÃO - Slowed | ZXKAI | 86 | 1.80 |
+| MONTAGEM XONADA | MXZI | 84 | 1.26 |
+| DIA DELÍCIA | Nakama | 82 | 1.26 |
 
--- Most represented artists in the playlist
+**Most represented artists**
+```sql
 SELECT * FROM spotify_db.analytics.artist_song_count;
+```
+| artist_name | total_songs | avg_popularity |
+|-------------|------------|----------------|
+| Sayfalse | 16 | 56.63 |
+| h6itam | 12 | 69.67 |
+| MXZI | 12 | 52.67 |
 
--- Album release timeline
-SELECT * FROM spotify_db.analytics.album_timeline;
-
--- Overall playlist summary
-SELECT
-    COUNT(DISTINCT song_id)        AS total_songs,
-    COUNT(DISTINCT song_artist_id) AS total_artists,
-    COUNT(DISTINCT song_album_id)  AS total_albums,
-    ROUND(AVG(song_popularity), 2) AS avg_popularity,
-    ROUND(AVG(song_duration) / 60000.0, 2) AS avg_duration_minutes
+**Playlist summary**
+```sql
+SELECT COUNT(DISTINCT song_id) AS total_songs,
+       COUNT(DISTINCT song_artist_id) AS total_artists,
+       COUNT(DISTINCT song_album_id) AS total_albums,
+       ROUND(AVG(song_popularity),2) AS avg_popularity
 FROM spotify_db.raw.song;
 ```
 
